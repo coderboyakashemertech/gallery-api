@@ -248,6 +248,213 @@ const openApiSpec = {
         }
       }
     },
+    "/api/gallery/folders": {
+      get: {
+        tags: ["Drives"],
+        summary: "Return folder metadata from gallery.json",
+        description:
+          "Reads gallery.json from the API project root first, then falls back to src/gallery.json. File lists are removed and only folder metadata is returned.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: "Gallery folders loaded successfully"
+          },
+          404: {
+            description: "gallery.json not found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          500: {
+            description: "Invalid JSON or read failure",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gallery/files": {
+      get: {
+        tags: ["Drives"],
+        summary: "Return file list for a gallery folder",
+        description:
+          "Reads gallery.json from the API project root first, then falls back to src/gallery.json. Returns the files for the folder matching the provided gallery path, with a public serve_url for each file.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "path",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              example: "%2Fmnt%2Fc%2FUsers%2Fakash%2FDownloads"
+            },
+            description: "Encoded gallery folder path from /api/gallery/folders."
+          }
+        ],
+        responses: {
+          200: {
+            description: "Gallery files loaded successfully"
+          },
+          400: {
+            description: "Missing gallery path",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "gallery.json or the requested gallery path was not found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          500: {
+            description: "Invalid JSON or read failure",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gallery/link": {
+      get: {
+        tags: ["Drives"],
+        summary: "Generate an accessible gallery file URL",
+        description:
+          "Accepts a baseUrl and an encoded gallery file path, then returns the public gallery file endpoint URL.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "baseUrl",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              example: "localhost:5000"
+            },
+            description: "Base URL to prepend. If no protocol is provided, http:// is used."
+          },
+          {
+            name: "path",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              example: "%2Fmnt%2Fc%2FUsers%2Fakash%2FDownloads%2FCompressed%2FHaldi%20Images%2FIMG_0958.JPG"
+            },
+            description: "Encoded gallery file path."
+          }
+        ],
+        responses: {
+          200: {
+            description: "Gallery file link generated successfully"
+          },
+          400: {
+            description: "Missing baseUrl, missing path, or invalid encoded path",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gallery/file": {
+      get: {
+        tags: ["Drives"],
+        summary: "Serve a gallery file",
+        description:
+          "Streams the requested gallery file if the encoded path exists in gallery.json and the file exists on disk.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "path",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              example: "%2Fmnt%2Fc%2FUsers%2Fakash%2FDownloads%2FCompressed%2FHaldi%20Images%2FIMG_0958.JPG"
+            },
+            description: "Encoded gallery file path from /api/gallery/files."
+          }
+        ],
+        responses: {
+          200: {
+            description: "Gallery file stream"
+          },
+          400: {
+            description: "Missing path or invalid encoded path",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "Gallery file path not found in gallery.json or file missing on disk",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gallery/file": {
+      get: {
+        tags: ["Drives"],
+        summary: "Serve a gallery file publicly",
+        description:
+          "Streams the requested gallery file if the encoded path exists in gallery.json and the file exists on disk. This route does not require authentication.",
+        parameters: [
+          {
+            name: "path",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              example: "%2Fmnt%2Fc%2FUsers%2Fakash%2FDownloads%2FCompressed%2FHaldi%20Images%2FIMG_0958.JPG"
+            },
+            description: "Encoded gallery file path from /api/gallery/files."
+          }
+        ],
+        responses: {
+          200: {
+            description: "Gallery file stream"
+          },
+          400: {
+            description: "Missing path or invalid encoded path",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "Gallery file path not found in gallery.json or file missing on disk",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/register": {
       post: {
         tags: ["Auth"],

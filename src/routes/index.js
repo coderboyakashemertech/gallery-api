@@ -1,5 +1,13 @@
 const express = require("express");
-const { listFiles, loadDrives, scanDirectoryTree } = require("../services/drivesService");
+const {
+  buildGalleryFileLink,
+  loadGalleryFiles,
+  listFiles,
+  loadDrives,
+  loadGalleryFolders,
+  resolveGalleryFile,
+  scanDirectoryTree,
+} = require("../services/drivesService");
 const { sendError, sendSuccess } = require("../utils/response");
 
 function createPublicRouter({ authEnabled }) {
@@ -22,6 +30,15 @@ function createPublicRouter({ authEnabled }) {
       message: "Service health check passed.",
       data: { status: "healthy" },
     });
+  });
+
+  router.get("/gallery/file", async (req, res) => {
+    try {
+      const file = await resolveGalleryFile(req.query.path);
+      return res.sendFile(file.absolutePath);
+    } catch (error) {
+      return sendError(res, error, "Failed to serve gallery file.");
+    }
   });
 
   return router;
@@ -80,10 +97,59 @@ function createApiRouter({ authEnabled }) {
       const files = await listFiles(req.query.path);
       return sendSuccess(res, {
         message: "Files loaded successfully.",
-        data: files
+        data: files,
       });
     } catch (error) {
       return sendError(res, error, "Failed to load files.");
+    }
+  });
+
+  router.get("/gallery/folders", async (_req, res) => {
+    try {
+      const folders = await loadGalleryFolders();
+      return sendSuccess(res, {
+        message: "Gallery folders loaded successfully.",
+        data: folders,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to load gallery folders.");
+    }
+  });
+
+  router.get("/gallery/files", async (req, res) => {
+    try {
+      const files = await loadGalleryFiles(req.query.path);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const data = {
+        ...files,
+        files: files.files.map((file) => ({
+          name: file.name,
+          size: file.size,
+          thumbnail: file.thumbnail,
+          date: file.date,
+          mimetype: file.mimetype,
+          url: buildGalleryFileLink(baseUrl, file.path).url,
+        })),
+      };
+
+      return sendSuccess(res, {
+        message: "Gallery files loaded successfully.",
+        data,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to load gallery files.");
+    }
+  });
+
+  router.get("/gallery/link", (req, res) => {
+    try {
+      const link = buildGalleryFileLink(req.query.baseUrl, req.query.path);
+      return sendSuccess(res, {
+        message: "Gallery file link generated successfully.",
+        data: link,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to generate gallery file link.");
     }
   });
 
