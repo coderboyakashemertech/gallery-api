@@ -1,0 +1,44 @@
+{
+  "name": "gallery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express starter with a feature-flagged auth layer.",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "build": "node scripts/build.js",
+    "start": "node src/server.js",
+    "start:build": "node dist/src/server.js",
+    "check": "node --check src/server.js && node --check src/app.js && node --check src/config.js && node --check src/middleware/auth.js && node --check src/routes/auth.js && node --check src/routes/index.js && node --check src/services/tokenService.js && node --check src/services/twoFactorService.js && node --check src/services/userService.js && node --check src/repositories/userRepository.js && node --check src/lib/prisma.js && node --check src/docs/openapi.js && node --check scripts/ensureSqliteFile.js",
+    "prisma:generate": "prisma generate",
+    "db:push": "node scripts/ensureSqliteFile.js && prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:setup": "prisma generate && node scripts/ensureSqliteFile.js && prisma db push"
+  },
+  "keywords": [
+    "express",
+    "api",
+    "auth"
+  ],
+  "author": "",
+  "license": "ISC",
+  "files": [
+    "dist",
+    "prisma"
+  ],
+  "dependencies": {
+    "@prisma/client": "^6.19.2",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.2"
+  }
+}
