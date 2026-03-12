@@ -8,28 +8,16 @@ const {
   registerUser,
   verifyTwoFactorSetup
 } = require("../services/userService");
-
-function sendError(res, error) {
-  return res.status(error.status || 500).json({
-    error: error.message || "Internal Server Error"
-  });
-}
-
-function sendMethodNotAllowed(res, allowedMethods) {
-  res.set("Allow", allowedMethods.join(", "));
-  return res.status(405).json({
-    error: "Method Not Allowed",
-    message: `Use ${allowedMethods.join(" or ")} for this endpoint.`
-  });
-}
+const { sendError, sendMethodNotAllowed, sendSuccess } = require("../utils/response");
 
 function registerEntryRoutes(router) {
   router.post("/register", async (req, res) => {
     try {
       const result = await registerUser(req.body);
-      return res.status(201).json({
+      return sendSuccess(res, {
+        statusCode: 201,
         message: "User registered successfully.",
-        ...result
+        data: result
       });
     } catch (error) {
       return sendError(res, error);
@@ -41,7 +29,12 @@ function registerEntryRoutes(router) {
   router.post("/login", async (req, res) => {
     try {
       const result = await loginUser(req.body);
-      return res.json(result);
+      return sendSuccess(res, {
+        message: result.requiresTwoFactor
+          ? "Two-factor authentication is required to complete login."
+          : "Login completed successfully.",
+        data: result
+      });
     } catch (error) {
       return sendError(res, error);
     }
@@ -54,7 +47,10 @@ function registerProtectedRoutes(router) {
   router.get("/me", requireJwt, async (req, res) => {
     try {
       const user = await getUserProfile(req.auth.username);
-      return res.json({ user });
+      return sendSuccess(res, {
+        message: "Authenticated user loaded successfully.",
+        data: { user }
+      });
     } catch (error) {
       return sendError(res, error);
     }
@@ -63,9 +59,9 @@ function registerProtectedRoutes(router) {
   router.post("/2fa/setup", requireJwt, async (req, res) => {
     try {
       const setup = await beginTwoFactorSetup(req.auth.username);
-      return res.json({
+      return sendSuccess(res, {
         message: "Scan the QR code and verify with your authenticator app.",
-        ...setup
+        data: setup
       });
     } catch (error) {
       return sendError(res, error);
@@ -75,9 +71,9 @@ function registerProtectedRoutes(router) {
   router.post("/2fa/verify", requireJwt, async (req, res) => {
     try {
       const user = await verifyTwoFactorSetup(req.auth.username, req.body.otp);
-      return res.json({
+      return sendSuccess(res, {
         message: "2FA enabled successfully.",
-        user
+        data: { user }
       });
     } catch (error) {
       return sendError(res, error);
@@ -87,9 +83,9 @@ function registerProtectedRoutes(router) {
   router.post("/2fa/disable", requireJwt, async (req, res) => {
     try {
       const user = await disableTwoFactor(req.auth.username, req.body.otp);
-      return res.json({
+      return sendSuccess(res, {
         message: "2FA disabled successfully.",
-        user
+        data: { user }
       });
     } catch (error) {
       return sendError(res, error);

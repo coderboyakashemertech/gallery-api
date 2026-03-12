@@ -1,4 +1,5 @@
 const { verifyAccessToken } = require("../services/tokenService");
+const { sendError } = require("../utils/response");
 
 function readBearerToken(req) {
   const authHeader = req.get("authorization");
@@ -12,10 +13,10 @@ function readBearerToken(req) {
 }
 
 function unauthorizedResponse(res, message) {
-  return res.status(401).json({
-    error: "Authentication required",
-    message
-  });
+  const error = new Error(message);
+  error.status = 401;
+  error.code = "AUTHENTICATION_REQUIRED";
+  return sendError(res, error, "Authentication required.");
 }
 
 function attachUserFromToken(req, token, next, res) {

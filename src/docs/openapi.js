@@ -14,6 +14,7 @@ const openApiSpec = {
   ],
   tags: [
     { name: "System", description: "Health and status endpoints" },
+    { name: "Drives", description: "Drive discovery endpoints" },
     { name: "Auth", description: "Registration, login, and profile endpoints" },
     { name: "Two-Factor", description: "TOTP setup and verification endpoints" },
     { name: "Protected API", description: "Endpoints gated by AUTH_ENABLED" }
@@ -129,6 +130,120 @@ const openApiSpec = {
         responses: {
           200: {
             description: "Health status"
+          }
+        }
+      }
+    },
+    "/api/drives": {
+      get: {
+        tags: ["Drives"],
+        summary: "Return drives from drives.json",
+        description:
+          "Reads drives.json from the API project root first, then falls back to src/drives.json.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: "Drive list loaded from drives.json"
+          },
+          404: {
+            description: "drives.json not found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          500: {
+            description: "Invalid JSON or read failure",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drives/folders": {
+      get: {
+        tags: ["Drives"],
+        summary: "Recursively scan folders for a given path",
+        description:
+          "Returns a nested directory tree for the provided path query parameter. Only directories are included.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "path",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              example: "/home/coderboy/projects/Gallery/api/src"
+            },
+            description: "Absolute or relative directory path to scan recursively."
+          }
+        ],
+        responses: {
+          200: {
+            description: "Directory tree loaded successfully"
+          },
+          400: {
+            description: "Missing path or path is not a directory",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "Path does not exist",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drives/files": {
+      get: {
+        tags: ["Drives"],
+        summary: "Recursively list files for a given path",
+        description:
+          "Returns all files found under the provided path query parameter, including nested folders. File paths are URL-encoded.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "path",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              example: "/home/coderboy/projects/Gallery/api/src"
+            },
+            description: "Absolute or relative directory path to scan recursively for files."
+          }
+        ],
+        responses: {
+          200: {
+            description: "Files loaded successfully"
+          },
+          400: {
+            description: "Missing path or path is not a directory",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "Path does not exist",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
           }
         }
       }

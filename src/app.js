@@ -5,6 +5,7 @@ const { openApiSpec, swaggerUiOptions } = require("./docs/openapi");
 const { createAuthMiddleware } = require("./middleware/auth");
 const { createAuthEntryRouter, createAuthRouter } = require("./routes/auth");
 const { createApiRouter, createPublicRouter } = require("./routes");
+const { sendError } = require("./utils/response");
 
 function createApp() {
   const app = express();
@@ -12,7 +13,7 @@ function createApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.get("/docs.json", (_req, res) => {
-    res.json(openApiSpec);
+    return res.json(openApiSpec);
   });
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec, swaggerUiOptions));
   app.use(createPublicRouter({ authEnabled: config.authEnabled }));
@@ -26,10 +27,10 @@ function createApp() {
   );
 
   app.use((req, res) => {
-    res.status(404).json({
-      error: "Not Found",
-      path: req.originalUrl
-    });
+    const error = new Error(`Route ${req.originalUrl} was not found.`);
+    error.status = 404;
+    error.code = "NOT_FOUND";
+    return sendError(res, error, "Resource not found.");
   });
 
   return app;
