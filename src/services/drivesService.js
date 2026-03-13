@@ -163,6 +163,29 @@ function buildGalleryFileLink(baseUrl, targetPath) {
   };
 }
 
+function buildDriveFileLink(baseUrl, targetPath) {
+  if (!baseUrl) {
+    const error = new Error("Query parameter 'baseUrl' is required.");
+    error.status = 400;
+    error.code = "BASE_URL_REQUIRED";
+    throw error;
+  }
+
+  if (!targetPath) {
+    const error = new Error("Query parameter 'path' is required.");
+    error.status = 400;
+    error.code = "PATH_REQUIRED";
+    throw error;
+  }
+
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  return {
+    baseUrl: normalizedBaseUrl,
+    path: targetPath,
+    url: `${normalizedBaseUrl}/drives/file?path=${targetPath}`
+  };
+}
+
 async function loadGalleryData() {
   const filePath = await findGalleryFile();
   const content = await fs.readFile(filePath, "utf8");
@@ -260,7 +283,8 @@ async function resolveDirectoryPath(targetPath) {
     throw error;
   }
 
-  const resolvedPath = path.resolve(targetPath);
+  const decodedPath = decodeURIComponent(targetPath);
+  const resolvedPath = path.resolve(decodedPath);
 
   let stats;
 
@@ -333,6 +357,83 @@ async function collectFiles(directoryPath, files) {
   }
 }
 
+async function listDirectoryContents(targetPath, baseUrl) {
+  const resolvedPath = await resolveDirectoryPath(targetPath);
+  const directoryEntries = await fs.readdir(resolvedPath, { withFileTypes: true });
+
+  const folders = [];
+  const files = [];
+
+  for (const entry of directoryEntries) {
+    const entryPath = path.join(resolvedPath, entry.name);
+    const encodedPath = encodeURIComponent(entryPath);
+
+    if (entry.isDirectory()) {
+      folders.push({
+        name: entry.name,
+        path: encodedPath,
+        type: "directory"
+      });
+    } else if (entry.isFile()) {
+      const stats = await fs.stat(entryPath);
+      const fileData = {
+        name: entry.name,
+        path: encodedPath,
+        size: stats.size,
+        extension: path.extname(entry.name) || null,
+        type: "file"
+      };
+
+      if (baseUrl) {
+        fileData.url = buildDriveFileLink(baseUrl, encodedPath).url;
+      }
+
+      files.push(fileData);
+    }
+  }
+
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    name: path.basename(resolvedPath),
+    path: encodeURIComponent(resolvedPath),
+    folders,
+    files
+  };
+}
+
+async function getDriveFile(targetPath) {
+  if (!targetPath) {
+    const error = new Error("Query parameter 'path' is required.");
+    error.status = 400;
+    error.code = "PATH_REQUIRED";
+    throw error;
+  }
+
+  const decodedPath = decodeURIComponent(targetPath);
+  const resolvedPath = path.resolve(decodedPath);
+
+  let stats;
+  try {
+    stats = await fs.stat(resolvedPath);
+  } catch (_error) {
+    const error = new Error("The provided path does not exist.");
+    error.status = 404;
+    error.code = "PATH_NOT_FOUND";
+    throw error;
+  }
+
+  if (!stats.isFile()) {
+    const error = new Error("The provided path must point to a file.");
+    error.status = 400;
+    error.code = "PATH_NOT_FILE";
+    throw error;
+  }
+
+  return resolvedPath;
+}
+
 module.exports = {
   buildGalleryFileLink,
   resolveGalleryFile,
@@ -340,5 +441,8 @@ module.exports = {
   loadGalleryFolders,
   loadDrives,
   listFiles,
-  scanDirectoryTree
+  scanDirectoryTree,
+  listDirectoryContents,
+  getDriveFile,
+  buildDriveFileLink,
 };

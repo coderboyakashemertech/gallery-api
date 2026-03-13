@@ -7,6 +7,8 @@ const {
   loadGalleryFolders,
   resolveGalleryFile,
   scanDirectoryTree,
+  listDirectoryContents,
+  getDriveFile,
 } = require("../services/drivesService");
 const { sendError, sendSuccess } = require("../utils/response");
 
@@ -38,6 +40,15 @@ function createPublicRouter({ authEnabled }) {
       return res.sendFile(file.absolutePath);
     } catch (error) {
       return sendError(res, error, "Failed to serve gallery file.");
+    }
+  });
+
+  router.get("/drives/file", async (req, res) => {
+    try {
+      const filePath = await getDriveFile(req.query.path);
+      return res.sendFile(filePath);
+    } catch (error) {
+      return sendError(res, error, "Failed to serve drive file.");
     }
   });
 
@@ -101,6 +112,19 @@ function createApiRouter({ authEnabled }) {
       });
     } catch (error) {
       return sendError(res, error, "Failed to load files.");
+    }
+  });
+
+  router.get("/drives/list", async (req, res) => {
+    try {
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const contents = await listDirectoryContents(req.query.path, baseUrl);
+      return sendSuccess(res, {
+        message: "Directory contents loaded successfully.",
+        data: contents,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to load directory contents.");
     }
   });
 
