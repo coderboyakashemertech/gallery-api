@@ -17,9 +17,12 @@ Express API with username/password auth, JWT sessions, optional route protection
 
 - `PORT=3000`
 - `AUTH_ENABLED=false`
+- `CORS_ALLOWED_ORIGINS=*`
 - `JWT_SECRET=change-me-in-production`
 - `JWT_EXPIRES_IN=1h`
 - `DATABASE_URL="file:./dev.db"`
+
+If your frontend is served from a tunneled or separate domain, leave `CORS_ALLOWED_ORIGINS=*` or set it to a comma-separated allowlist such as `https://app.example.com,https://abc123.ngrok-free.app`.
 
 ## Auth model
 

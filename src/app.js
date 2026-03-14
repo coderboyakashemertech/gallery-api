@@ -3,6 +3,7 @@ const swaggerUi = require("swagger-ui-express");
 const config = require("./config");
 const { openApiSpec, swaggerUiOptions } = require("./docs/openapi");
 const { createAuthMiddleware } = require("./middleware/auth");
+const { createCorsMiddleware } = require("./middleware/cors");
 const { createAuthEntryRouter, createAuthRouter } = require("./routes/auth");
 const { createApiRouter, createPublicRouter } = require("./routes");
 const { sendError } = require("./utils/response");
@@ -10,6 +11,7 @@ const { sendError } = require("./utils/response");
 function createApp() {
   const app = express();
 
+  app.use(createCorsMiddleware({ allowedOrigins: config.corsAllowedOrigins }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.get("/docs.json", (_req, res) => {
