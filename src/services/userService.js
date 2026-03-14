@@ -95,7 +95,8 @@ async function loginUser({ username, password, otp }) {
       };
     }
 
-    const isValidOtp = verifyOtp(user.twoFactorSecret, String(otp).trim());
+    const sanitizedOtp = String(otp).replace(/\D/g, "");
+    const isValidOtp = verifyOtp(user.twoFactorSecret, sanitizedOtp);
 
     if (!isValidOtp) {
       const error = new Error("invalid two-factor code.");
@@ -160,7 +161,8 @@ async function verifyTwoFactorSetup(username, otp) {
     throw error;
   }
 
-  const isValidOtp = verifyOtp(user.twoFactorPendingSecret, String(otp).trim());
+  const sanitizedOtp = String(otp).replace(/\D/g, "");
+  const isValidOtp = verifyOtp(user.twoFactorPendingSecret, sanitizedOtp);
 
   if (!isValidOtp) {
     const error = new Error("invalid two-factor code.");
@@ -192,7 +194,8 @@ async function disableTwoFactor(username, otp) {
     throw error;
   }
 
-  const isValidOtp = verifyOtp(user.twoFactorSecret, String(otp).trim());
+  const sanitizedOtp = String(otp).replace(/\D/g, "");
+  const isValidOtp = verifyOtp(user.twoFactorSecret, sanitizedOtp);
 
   if (!isValidOtp) {
     const error = new Error("invalid two-factor code.");

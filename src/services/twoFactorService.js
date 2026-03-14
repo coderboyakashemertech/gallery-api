@@ -6,11 +6,17 @@ async function createSetup(username) {
     name: `Gallery (${username})`
   });
 
-  const qrCodeDataUrl = await QRCode.toDataURL(secret.otpauth_url);
+  const otpauthUrl = speakeasy.otpauthURL({
+    secret: secret.ascii,
+    label: `Gallery:${username}`,
+    issuer: "Gallery"
+  });
+
+  const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
   return {
     secret: secret.base32,
-    otpauthUrl: secret.otpauth_url,
+    otpauthUrl,
     qrCodeDataUrl
   };
 }
