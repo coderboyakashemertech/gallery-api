@@ -22,13 +22,13 @@ async function writeBuildManifest() {
     name: pkg.name,
     version: pkg.version,
     private: true,
-    main: "src/server.js",
+    main: "src/server.js"
   };
 
   await fs.writeFile(
     path.join(distRoot, "package.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8",
+    "utf8"
   );
 }
 
@@ -39,7 +39,7 @@ async function build() {
   await copyIntoDist("scripts");
   await writeBuildManifest();
 
-  console.log("Build completed at dist");
+  console.log("Build completed at dist/");
 }
 
 build().catch((error) => {
