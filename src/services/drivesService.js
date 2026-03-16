@@ -1,3 +1,4 @@
+const { spawn } = require("node:child_process");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
@@ -460,10 +461,8 @@ async function createFolder(targetPath) {
 
   await ensureParentDirectory(parentPath);
 
-  try {
-    const existingStats = await fs.stat(resolvedPath);
-
-    if (existingStats.isDirectory()) {
+  if (await pathExists(resolvedPath)) {
+    if (await isDirectoryPath(resolvedPath)) {
       const error = new Error("The folder already exists.");
       error.status = 409;
       error.code = "FOLDER_ALREADY_EXISTS";
@@ -474,13 +473,9 @@ async function createFolder(targetPath) {
     error.status = 409;
     error.code = "PATH_ALREADY_EXISTS";
     throw error;
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      throw error;
-    }
   }
 
-  await fs.mkdir(resolvedPath, { recursive: true });
+  await runSudoCommand("mkdir", ["-p", "--", resolvedPath]);
 
   return {
     name: folderName,
@@ -492,7 +487,7 @@ async function createFolder(targetPath) {
 async function deletePath(targetPath) {
   const { resolvedPath, stats } = await resolveExistingPath(targetPath, "path");
 
-  await fs.rm(resolvedPath, { recursive: true, force: false });
+  await runSudoCommand("rm", ["-rf", "--", resolvedPath]);
 
   return {
     name: path.basename(resolvedPath),
@@ -524,7 +519,7 @@ async function movePathToRecycleBin(targetPath, recycleBinPath) {
   }
 
   try {
-    await fs.mkdir(recycleBinResolvedPath, { recursive: true });
+    await runSudoCommand("mkdir", ["-p", "--", recycleBinResolvedPath]);
   } catch (error) {
     if (isPermissionError(error)) {
       throw buildPermissionError(error, recycleBinResolvedPath);
@@ -539,26 +534,13 @@ async function movePathToRecycleBin(targetPath, recycleBinPath) {
   );
 
   try {
-    await fs.rename(resolvedPath, recyclePath);
+    await runSudoCommand("mv", ["--", resolvedPath, recyclePath]);
   } catch (error) {
     if (isPermissionError(error)) {
       throw buildPermissionError(error, recycleBinResolvedPath);
     }
 
-    if (error.code !== "EXDEV") {
-      throw error;
-    }
-
-    try {
-      await copyPath(resolvedPath, recyclePath, stats);
-      await fs.rm(resolvedPath, { recursive: true, force: false });
-    } catch (copyError) {
-      if (isPermissionError(copyError)) {
-        throw buildPermissionError(copyError, recycleBinResolvedPath);
-      }
-
-      throw copyError;
-    }
+    throw error;
   }
 
   return {
@@ -608,18 +590,14 @@ async function resolveExistingPath(targetPath, fieldName) {
 }
 
 async function ensureParentDirectory(parentPath) {
-  let stats;
-
-  try {
-    stats = await fs.stat(parentPath);
-  } catch (_error) {
+  if (!(await pathExists(parentPath))) {
     const error = new Error("The parent directory does not exist.");
     error.status = 404;
     error.code = "PARENT_PATH_NOT_FOUND";
     throw error;
   }
 
-  if (!stats.isDirectory()) {
+  if (!(await isDirectoryPath(parentPath))) {
     const error = new Error("The parent path must point to a directory.");
     error.status = 400;
     error.code = "PARENT_PATH_NOT_DIRECTORY";
@@ -644,21 +622,86 @@ async function resolveRecycleDestination(recycleBinPath, entryName) {
 }
 
 async function pathExists(targetPath) {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch (_error) {
-    return false;
-  }
+  const result = await runSudoCommand("test", ["-e", targetPath], {
+    allowedExitCodes: [1],
+  });
+  return result.code === 0;
 }
 
-async function copyPath(sourcePath, destinationPath, stats) {
-  if (stats.isDirectory()) {
-    await fs.cp(sourcePath, destinationPath, { recursive: true });
-    return;
+async function isDirectoryPath(targetPath) {
+  const result = await runSudoCommand("test", ["-d", targetPath], {
+    allowedExitCodes: [1],
+  });
+  return result.code === 0;
+}
+
+function getLinuxPassword() {
+  const password = process.env.LINUX_PASSWORD;
+
+  if (!password) {
+    const error = new Error("LINUX_PASSWORD is not configured.");
+    error.status = 500;
+    error.code = "LINUX_PASSWORD_MISSING";
+    throw error;
   }
 
-  await fs.copyFile(sourcePath, destinationPath);
+  return password;
+}
+
+function runSudoCommand(command, args, options = {}) {
+  const allowedExitCodes = options.allowedExitCodes || [];
+  const password = getLinuxPassword();
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("sudo", ["-S", "-p", "", "--", command, ...args]);
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      if (code === 0 || allowedExitCodes.includes(code)) {
+        resolve({ code, stdout, stderr });
+        return;
+      }
+
+      const error = new Error(stderr.trim() || `Command '${command}' failed.`);
+      error.code = parseSudoErrorCode(stderr);
+      error.exitCode = code;
+      reject(error);
+    });
+
+    child.stdin.write(`${password}\n`);
+    child.stdin.end();
+  });
+}
+
+function parseSudoErrorCode(stderr) {
+  const normalizedError = String(stderr || "").toLowerCase();
+
+  if (normalizedError.includes("permission denied")) {
+    return "EACCES";
+  }
+
+  if (normalizedError.includes("not a directory")) {
+    return "ENOTDIR";
+  }
+
+  if (normalizedError.includes("no such file or directory")) {
+    return "ENOENT";
+  }
+
+  return "LINUX_COMMAND_FAILED";
 }
 
 function isPermissionError(error) {
