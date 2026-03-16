@@ -118,7 +118,9 @@ function createApiRouter({ authEnabled }) {
   router.get("/drives/list", async (req, res) => {
     try {
       const baseUrl = `${req.protocol}://${req.get("host")}`;
-      const contents = await listDirectoryContents(req.query.path, baseUrl);
+      const contents = await listDirectoryContents(req.query.path, baseUrl, {
+        hidden: req.query.hidden === "true",
+      });
       return sendSuccess(res, {
         message: "Directory contents loaded successfully.",
         data: contents,

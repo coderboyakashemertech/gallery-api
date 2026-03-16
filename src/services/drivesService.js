@@ -357,14 +357,19 @@ async function collectFiles(directoryPath, files) {
   }
 }
 
-async function listDirectoryContents(targetPath, baseUrl) {
+async function listDirectoryContents(targetPath, baseUrl, options = {}) {
   const resolvedPath = await resolveDirectoryPath(targetPath);
   const directoryEntries = await fs.readdir(resolvedPath, { withFileTypes: true });
+  const includeHidden = options.hidden === true;
 
   const folders = [];
   const files = [];
 
   for (const entry of directoryEntries) {
+    if (!includeHidden && entry.name.startsWith(".")) {
+      continue;
+    }
+
     const entryPath = path.join(resolvedPath, entry.name);
     const encodedPath = encodeURIComponent(entryPath);
 
