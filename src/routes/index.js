@@ -1,6 +1,10 @@
 const express = require("express");
+const config = require("../config");
 const {
   buildGalleryFileLink,
+  createFolder,
+  deletePath,
+  movePathToRecycleBin,
   loadGalleryFiles,
   listFiles,
   loadDrives,
@@ -127,6 +131,46 @@ function createApiRouter({ authEnabled }) {
       });
     } catch (error) {
       return sendError(res, error, "Failed to load directory contents.");
+    }
+  });
+
+  router.post("/drives/folder", async (req, res) => {
+    try {
+      const folder = await createFolder(req.body.path);
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: "Folder created successfully.",
+        data: folder,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to create folder.");
+    }
+  });
+
+  router.delete("/drives/item", async (req, res) => {
+    try {
+      const item = await deletePath(req.body.path || req.query.path);
+      return sendSuccess(res, {
+        message: "Item deleted successfully.",
+        data: item,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to delete item.");
+    }
+  });
+
+  router.post("/drives/recycle", async (req, res) => {
+    try {
+      const item = await movePathToRecycleBin(
+        req.body.path,
+        config.recycleBinPath
+      );
+      return sendSuccess(res, {
+        message: "Item moved to recycle bin successfully.",
+        data: item,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to move item to recycle bin.");
     }
   });
 

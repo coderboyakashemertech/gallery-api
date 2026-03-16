@@ -71,6 +71,16 @@ const openApiSpec = {
           otp: { type: "string", example: "123456" }
         }
       },
+      DrivePathRequest: {
+        type: "object",
+        required: ["path"],
+        properties: {
+          path: {
+            type: "string",
+            example: "/mnt/c/Users/akash/Downloads/New Folder"
+          }
+        }
+      },
       RegisterResponse: {
         type: "object",
         properties: {
@@ -239,6 +249,148 @@ const openApiSpec = {
           },
           404: {
             description: "Path does not exist",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drives/folder": {
+      post: {
+        tags: ["Drives"],
+        summary: "Create a folder",
+        description:
+          "Creates a folder at the provided absolute or relative path. Parent directory must already exist.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/DrivePathRequest" }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: "Folder created successfully"
+          },
+          400: {
+            description: "Missing or invalid folder path",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "Parent directory not found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          409: {
+            description: "Folder or file already exists at the target path",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drives/item": {
+      delete: {
+        tags: ["Drives"],
+        summary: "Delete a file or folder",
+        description:
+          "Deletes the provided file or directory permanently. The encoded or plain path may be supplied in the request body or query string.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "path",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              example: "%2Fmnt%2Fc%2FUsers%2Fakash%2FDownloads%2Fold.txt"
+            },
+            description: "Optional encoded path to delete when not provided in the request body."
+          }
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/DrivePathRequest" }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: "Item deleted successfully"
+          },
+          400: {
+            description: "Missing or invalid path",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "Path not found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drives/recycle": {
+      post: {
+        tags: ["Drives"],
+        summary: "Move a file or folder to the recycle bin",
+        description:
+          "Moves the provided file or directory to the recycle bin path configured by RECYCLE_BIN_PATH. If the name already exists there, a timestamp suffix is added.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/DrivePathRequest" }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: "Item moved to recycle bin successfully"
+          },
+          400: {
+            description: "Missing or invalid path, or item is already in the recycle bin",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          404: {
+            description: "Path not found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          500: {
+            description: "Recycle bin path is not configured",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ErrorResponse" }

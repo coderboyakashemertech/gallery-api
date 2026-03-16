@@ -439,6 +439,208 @@ async function getDriveFile(targetPath) {
   return resolvedPath;
 }
 
+async function createFolder(targetPath) {
+  if (!targetPath) {
+    const error = new Error("Request field 'path' is required.");
+    error.status = 400;
+    error.code = "PATH_REQUIRED";
+    throw error;
+  }
+
+  const resolvedPath = resolveInputPath(targetPath);
+  const parentPath = path.dirname(resolvedPath);
+  const folderName = path.basename(resolvedPath);
+
+  if (!folderName || folderName === "." || folderName === path.sep) {
+    const error = new Error("The provided path must point to a new folder.");
+    error.status = 400;
+    error.code = "INVALID_FOLDER_PATH";
+    throw error;
+  }
+
+  await ensureParentDirectory(parentPath);
+
+  try {
+    const existingStats = await fs.stat(resolvedPath);
+
+    if (existingStats.isDirectory()) {
+      const error = new Error("The folder already exists.");
+      error.status = 409;
+      error.code = "FOLDER_ALREADY_EXISTS";
+      throw error;
+    }
+
+    const error = new Error("A file already exists at the provided path.");
+    error.status = 409;
+    error.code = "PATH_ALREADY_EXISTS";
+    throw error;
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await fs.mkdir(resolvedPath, { recursive: true });
+
+  return {
+    name: folderName,
+    path: encodeURIComponent(resolvedPath),
+    type: "directory"
+  };
+}
+
+async function deletePath(targetPath) {
+  const { resolvedPath, stats } = await resolveExistingPath(targetPath, "path");
+
+  await fs.rm(resolvedPath, { recursive: true, force: false });
+
+  return {
+    name: path.basename(resolvedPath),
+    path: encodeURIComponent(resolvedPath),
+    type: stats.isDirectory() ? "directory" : "file",
+    deleted: true
+  };
+}
+
+async function movePathToRecycleBin(targetPath, recycleBinPath) {
+  if (!recycleBinPath) {
+    const error = new Error("RECYCLE_BIN_PATH is not configured.");
+    error.status = 500;
+    error.code = "RECYCLE_BIN_PATH_MISSING";
+    throw error;
+  }
+
+  const recycleBinResolvedPath = path.resolve(recycleBinPath);
+  const { resolvedPath, stats } = await resolveExistingPath(targetPath, "path");
+
+  if (
+    resolvedPath === recycleBinResolvedPath ||
+    resolvedPath.startsWith(`${recycleBinResolvedPath}${path.sep}`)
+  ) {
+    const error = new Error("The provided path is already inside the recycle bin.");
+    error.status = 400;
+    error.code = "PATH_ALREADY_IN_RECYCLE_BIN";
+    throw error;
+  }
+
+  await fs.mkdir(recycleBinResolvedPath, { recursive: true });
+
+  const recyclePath = await resolveRecycleDestination(
+    recycleBinResolvedPath,
+    path.basename(resolvedPath)
+  );
+
+  try {
+    await fs.rename(resolvedPath, recyclePath);
+  } catch (error) {
+    if (error.code !== "EXDEV") {
+      throw error;
+    }
+
+    await copyPath(resolvedPath, recyclePath, stats);
+    await fs.rm(resolvedPath, { recursive: true, force: false });
+  }
+
+  return {
+    name: path.basename(resolvedPath),
+    path: encodeURIComponent(resolvedPath),
+    recyclePath: encodeURIComponent(recyclePath),
+    type: stats.isDirectory() ? "directory" : "file",
+    moved: true
+  };
+}
+
+function resolveInputPath(targetPath) {
+  const decodedPath = decodeInputPath(targetPath, "path");
+  return path.resolve(decodedPath);
+}
+
+function decodeInputPath(targetPath, fieldName) {
+  if (!targetPath) {
+    const error = new Error(`Request field '${fieldName}' is required.`);
+    error.status = 400;
+    error.code = "PATH_REQUIRED";
+    throw error;
+  }
+
+  try {
+    return decodeURIComponent(targetPath);
+  } catch (_error) {
+    const error = new Error(`Request field '${fieldName}' must be a valid encoded path.`);
+    error.status = 400;
+    error.code = "INVALID_PATH_ENCODING";
+    throw error;
+  }
+}
+
+async function resolveExistingPath(targetPath, fieldName) {
+  const resolvedPath = resolveInputPath(targetPath);
+
+  try {
+    const stats = await fs.stat(resolvedPath);
+    return { resolvedPath, stats };
+  } catch (_error) {
+    const error = new Error("The provided path does not exist.");
+    error.status = 404;
+    error.code = "PATH_NOT_FOUND";
+    throw error;
+  }
+}
+
+async function ensureParentDirectory(parentPath) {
+  let stats;
+
+  try {
+    stats = await fs.stat(parentPath);
+  } catch (_error) {
+    const error = new Error("The parent directory does not exist.");
+    error.status = 404;
+    error.code = "PARENT_PATH_NOT_FOUND";
+    throw error;
+  }
+
+  if (!stats.isDirectory()) {
+    const error = new Error("The parent path must point to a directory.");
+    error.status = 400;
+    error.code = "PARENT_PATH_NOT_DIRECTORY";
+    throw error;
+  }
+}
+
+async function resolveRecycleDestination(recycleBinPath, entryName) {
+  const parsedPath = path.parse(entryName);
+  let candidatePath = path.join(recycleBinPath, entryName);
+  let suffix = 1;
+
+  while (await pathExists(candidatePath)) {
+    const nextName = parsedPath.ext
+      ? `${parsedPath.name}-${Date.now()}-${suffix}${parsedPath.ext}`
+      : `${parsedPath.base}-${Date.now()}-${suffix}`;
+    candidatePath = path.join(recycleBinPath, nextName);
+    suffix += 1;
+  }
+
+  return candidatePath;
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function copyPath(sourcePath, destinationPath, stats) {
+  if (stats.isDirectory()) {
+    await fs.cp(sourcePath, destinationPath, { recursive: true });
+    return;
+  }
+
+  await fs.copyFile(sourcePath, destinationPath);
+}
+
 module.exports = {
   buildGalleryFileLink,
   resolveGalleryFile,
@@ -450,4 +652,7 @@ module.exports = {
   listDirectoryContents,
   getDriveFile,
   buildDriveFileLink,
+  createFolder,
+  deletePath,
+  movePathToRecycleBin,
 };
