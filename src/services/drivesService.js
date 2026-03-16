@@ -523,7 +523,15 @@ async function movePathToRecycleBin(targetPath, recycleBinPath) {
     throw error;
   }
 
-  await fs.mkdir(recycleBinResolvedPath, { recursive: true });
+  try {
+    await fs.mkdir(recycleBinResolvedPath, { recursive: true });
+  } catch (error) {
+    if (isPermissionError(error)) {
+      throw buildPermissionError(error, recycleBinResolvedPath);
+    }
+
+    throw error;
+  }
 
   const recyclePath = await resolveRecycleDestination(
     recycleBinResolvedPath,
@@ -533,12 +541,24 @@ async function movePathToRecycleBin(targetPath, recycleBinPath) {
   try {
     await fs.rename(resolvedPath, recyclePath);
   } catch (error) {
+    if (isPermissionError(error)) {
+      throw buildPermissionError(error, recycleBinResolvedPath);
+    }
+
     if (error.code !== "EXDEV") {
       throw error;
     }
 
-    await copyPath(resolvedPath, recyclePath, stats);
-    await fs.rm(resolvedPath, { recursive: true, force: false });
+    try {
+      await copyPath(resolvedPath, recyclePath, stats);
+      await fs.rm(resolvedPath, { recursive: true, force: false });
+    } catch (copyError) {
+      if (isPermissionError(copyError)) {
+        throw buildPermissionError(copyError, recycleBinResolvedPath);
+      }
+
+      throw copyError;
+    }
   }
 
   return {
@@ -639,6 +659,19 @@ async function copyPath(sourcePath, destinationPath, stats) {
   }
 
   await fs.copyFile(sourcePath, destinationPath);
+}
+
+function isPermissionError(error) {
+  return error && ["EACCES", "EPERM"].includes(error.code);
+}
+
+function buildPermissionError(error, recycleBinResolvedPath) {
+  const permissionError = new Error(
+    `Permission denied while moving the item to the recycle bin at '${recycleBinResolvedPath}'.`
+  );
+  permissionError.status = 403;
+  permissionError.code = error.code || "RECYCLE_BIN_PERMISSION_DENIED";
+  return permissionError;
 }
 
 module.exports = {
