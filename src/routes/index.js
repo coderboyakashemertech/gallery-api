@@ -1,6 +1,10 @@
 const express = require("express");
 const config = require("../config");
 const {
+  getFavoriteImages,
+  saveFavoriteImage
+} = require("../services/favoriteImageService");
+const {
   buildGalleryFileLink,
   createFolder,
   deletePath,
@@ -92,6 +96,26 @@ function createApiRouter({ authEnabled }) {
       });
     } catch (error) {
       return sendError(res, error, "Failed to load drives.");
+    }
+  });
+
+  router.get("/drives/recycle-bin", async (_req, res) => {
+    try {
+      const recycleBinPath = config.recycleBinPath;
+
+      return sendSuccess(res, {
+        message: recycleBinPath
+          ? "Recycle bin path loaded successfully."
+          : "Recycle bin path is not configured.",
+        data: recycleBinPath
+          ? {
+              name: "Recycle Bin",
+              path: encodeURIComponent(recycleBinPath),
+            }
+          : null,
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to load recycle bin path.");
     }
   });
 
@@ -220,6 +244,35 @@ function createApiRouter({ authEnabled }) {
       });
     } catch (error) {
       return sendError(res, error, "Failed to generate gallery file link.");
+    }
+  });
+
+  router.post("/favorites/images", async (req, res) => {
+    try {
+      const favoriteImage = await saveFavoriteImage(
+        req.auth.username,
+        req.body.imageUrl
+      );
+
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: "Favorite image link saved successfully.",
+        data: favoriteImage
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to save favorite image link.");
+    }
+  });
+
+  router.get("/favorites/images", async (req, res) => {
+    try {
+      const favoriteImages = await getFavoriteImages(req.auth.username);
+      return sendSuccess(res, {
+        message: "Favorite image links loaded successfully.",
+        data: favoriteImages
+      });
+    } catch (error) {
+      return sendError(res, error, "Failed to load favorite image links.");
     }
   });
 

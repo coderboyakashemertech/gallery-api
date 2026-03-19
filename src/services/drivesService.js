@@ -10,6 +10,28 @@ const galleryCandidatePaths = [
   path.join(process.cwd(), "gallery.json"),
   path.join(process.cwd(), "src", "gallery.json")
 ];
+const driveAliasCandidates = {
+  downloads: [
+    "/storage/emulated/0/Download",
+    "/storage/self/primary/Download",
+    "/sdcard/Download"
+  ],
+  documents: [
+    "/storage/emulated/0/Documents",
+    "/storage/self/primary/Documents",
+    "/sdcard/Documents"
+  ],
+  pictures: [
+    "/storage/emulated/0/Pictures",
+    "/storage/self/primary/Pictures",
+    "/sdcard/Pictures"
+  ],
+  dcim: [
+    "/storage/emulated/0/DCIM",
+    "/storage/self/primary/DCIM",
+    "/sdcard/DCIM"
+  ]
+};
 
 async function findDrivesFile() {
   for (const filePath of candidatePaths) {
@@ -31,7 +53,19 @@ async function loadDrives() {
   const content = await fs.readFile(filePath, "utf8");
 
   try {
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+
+    if (!Array.isArray(parsed)) {
+      return parsed;
+    }
+
+    const resolvedDrives = [];
+
+    for (const drive of parsed) {
+      resolvedDrives.push(await resolveConfiguredDrive(drive));
+    }
+
+    return resolvedDrives;
   } catch (_error) {
     const error = new Error("drives.json contains invalid JSON.");
     error.status = 500;
@@ -198,6 +232,83 @@ async function loadGalleryData() {
     error.status = 500;
     throw error;
   }
+}
+
+async function resolveConfiguredDrive(drive) {
+  if (!drive || typeof drive !== "object") {
+    return drive;
+  }
+
+  const configuredPath = typeof drive.path === "string" ? drive.path : "";
+  const fallbackPath = await resolveKnownDriveAlias(drive, configuredPath);
+  const finalPath = fallbackPath || configuredPath;
+
+  return {
+    ...drive,
+    path: finalPath
+  };
+}
+
+async function resolveKnownDriveAlias(drive, configuredPath) {
+  const normalizedConfiguredPath = String(configuredPath || "").trim();
+
+  if (normalizedConfiguredPath && (await fsPathExists(normalizedConfiguredPath))) {
+    return path.resolve(normalizedConfiguredPath);
+  }
+
+  const aliases = getDriveAliases(drive, normalizedConfiguredPath);
+
+  for (const alias of aliases) {
+    const candidates = driveAliasCandidates[alias] || [];
+    const resolvedCandidate = await findFirstExistingDirectory(candidates);
+
+    if (resolvedCandidate) {
+      return resolvedCandidate;
+    }
+  }
+
+  return normalizedConfiguredPath;
+}
+
+function getDriveAliases(drive, configuredPath) {
+  const aliases = new Set();
+  const driveName = typeof drive.name === "string" ? drive.name : "";
+  const normalizedName = driveName.trim().toLowerCase();
+  const normalizedBaseName = path.basename(configuredPath || "").trim().toLowerCase();
+
+  for (const value of [normalizedName, normalizedBaseName]) {
+    if (!value) {
+      continue;
+    }
+
+    if (value === "download" || value === "downloads") {
+      aliases.add("downloads");
+    }
+
+    if (value === "document" || value === "documents") {
+      aliases.add("documents");
+    }
+
+    if (value === "picture" || value === "pictures") {
+      aliases.add("pictures");
+    }
+
+    if (value === "dcim") {
+      aliases.add("dcim");
+    }
+  }
+
+  return Array.from(aliases);
+}
+
+async function findFirstExistingDirectory(candidates) {
+  for (const candidate of candidates) {
+    if (await fsIsDirectoryPath(candidate)) {
+      return path.resolve(candidate);
+    }
+  }
+
+  return null;
 }
 
 function normalizeGalleryPath(targetPath) {
@@ -484,6 +595,24 @@ async function createFolder(targetPath) {
   };
 }
 
+async function fsPathExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function fsIsDirectoryPath(targetPath) {
+  try {
+    const stats = await fs.stat(targetPath);
+    return stats.isDirectory();
+  } catch (_error) {
+    return false;
+  }
+}
+
 async function deletePath(targetPath) {
   const { resolvedPath, stats } = await resolveExistingPath(targetPath, "path");
 
@@ -498,15 +627,32 @@ async function deletePath(targetPath) {
 }
 
 async function movePathToRecycleBin(targetPath, recycleBinPath) {
+  logRecycleDebug("request.received", {
+    targetPath,
+    recycleBinPath
+  });
+
   if (!recycleBinPath) {
     const error = new Error("RECYCLE_BIN_PATH is not configured.");
     error.status = 500;
     error.code = "RECYCLE_BIN_PATH_MISSING";
+    logRecycleDebug("request.invalid", {
+      reason: error.code,
+      message: error.message
+    });
     throw error;
   }
 
   const recycleBinResolvedPath = path.resolve(recycleBinPath);
+  logRecycleDebug("recycle_bin.resolved", {
+    recycleBinResolvedPath
+  });
+
   const { resolvedPath, stats } = await resolveExistingPath(targetPath, "path");
+  logRecycleDebug("source.resolved", {
+    resolvedPath,
+    itemType: stats.isDirectory() ? "directory" : "file"
+  });
 
   if (
     resolvedPath === recycleBinResolvedPath ||
@@ -515,12 +661,31 @@ async function movePathToRecycleBin(targetPath, recycleBinPath) {
     const error = new Error("The provided path is already inside the recycle bin.");
     error.status = 400;
     error.code = "PATH_ALREADY_IN_RECYCLE_BIN";
+    logRecycleDebug("source.rejected", {
+      reason: error.code,
+      resolvedPath,
+      recycleBinResolvedPath
+    });
     throw error;
   }
 
   try {
-    await runSudoCommand("mkdir", ["-p", "--", recycleBinResolvedPath]);
+    logRecycleDebug("recycle_bin.ensure.start", {
+      recycleBinResolvedPath
+    });
+    await runSudoCommand("mkdir", ["-p", "--", recycleBinResolvedPath], {
+      debugLabel: "recycle_bin.ensure"
+    });
+    logRecycleDebug("recycle_bin.ensure.success", {
+      recycleBinResolvedPath
+    });
   } catch (error) {
+    logRecycleDebug("recycle_bin.ensure.failed", {
+      recycleBinResolvedPath,
+      code: error.code,
+      message: error.message
+    });
+
     if (isPermissionError(error)) {
       throw buildPermissionError(error, recycleBinResolvedPath);
     }
@@ -532,10 +697,30 @@ async function movePathToRecycleBin(targetPath, recycleBinPath) {
     recycleBinResolvedPath,
     path.basename(resolvedPath)
   );
+  logRecycleDebug("recycle_destination.selected", {
+    recyclePath
+  });
 
   try {
-    await runSudoCommand("mv", ["--", resolvedPath, recyclePath]);
+    logRecycleDebug("move.start", {
+      from: resolvedPath,
+      to: recyclePath
+    });
+    await runSudoCommand("mv", ["--", resolvedPath, recyclePath], {
+      debugLabel: "recycle_move"
+    });
+    logRecycleDebug("move.success", {
+      from: resolvedPath,
+      to: recyclePath
+    });
   } catch (error) {
+    logRecycleDebug("move.failed", {
+      from: resolvedPath,
+      to: recyclePath,
+      code: error.code,
+      message: error.message
+    });
+
     if (isPermissionError(error)) {
       throw buildPermissionError(error, recycleBinResolvedPath);
     }
@@ -577,14 +762,29 @@ function decodeInputPath(targetPath, fieldName) {
 
 async function resolveExistingPath(targetPath, fieldName) {
   const resolvedPath = resolveInputPath(targetPath);
+  logRecycleDebug("path.resolve.start", {
+    fieldName,
+    targetPath,
+    resolvedPath
+  });
 
   try {
     const stats = await fs.stat(resolvedPath);
+    logRecycleDebug("path.resolve.success", {
+      fieldName,
+      resolvedPath,
+      itemType: stats.isDirectory() ? "directory" : stats.isFile() ? "file" : "other"
+    });
     return { resolvedPath, stats };
   } catch (_error) {
     const error = new Error("The provided path does not exist.");
     error.status = 404;
     error.code = "PATH_NOT_FOUND";
+    logRecycleDebug("path.resolve.failed", {
+      fieldName,
+      resolvedPath,
+      reason: error.code
+    });
     throw error;
   }
 }
@@ -610,13 +810,27 @@ async function resolveRecycleDestination(recycleBinPath, entryName) {
   let candidatePath = path.join(recycleBinPath, entryName);
   let suffix = 1;
 
+  logRecycleDebug("destination.probe.start", {
+    recycleBinPath,
+    entryName,
+    candidatePath
+  });
+
   while (await pathExists(candidatePath)) {
+    logRecycleDebug("destination.probe.conflict", {
+      candidatePath,
+      suffix
+    });
     const nextName = parsedPath.ext
       ? `${parsedPath.name}-${Date.now()}-${suffix}${parsedPath.ext}`
       : `${parsedPath.base}-${Date.now()}-${suffix}`;
     candidatePath = path.join(recycleBinPath, nextName);
     suffix += 1;
   }
+
+  logRecycleDebug("destination.probe.available", {
+    candidatePath
+  });
 
   return candidatePath;
 }
@@ -650,9 +864,16 @@ function getLinuxPassword() {
 
 function runSudoCommand(command, args, options = {}) {
   const allowedExitCodes = options.allowedExitCodes || [];
+  const debugLabel = options.debugLabel || command;
   const password = getLinuxPassword();
 
   return new Promise((resolve, reject) => {
+    logRecycleDebug("linux_command.start", {
+      debugLabel,
+      command,
+      args
+    });
+
     const child = spawn("sudo", ["-S", "-p", "", "--", command, ...args]);
     let stdout = "";
     let stderr = "";
@@ -666,11 +887,23 @@ function runSudoCommand(command, args, options = {}) {
     });
 
     child.on("error", (error) => {
+      logRecycleDebug("linux_command.process_error", {
+        debugLabel,
+        command,
+        message: error.message
+      });
       reject(error);
     });
 
     child.on("close", (code) => {
       if (code === 0 || allowedExitCodes.includes(code)) {
+        logRecycleDebug("linux_command.success", {
+          debugLabel,
+          command,
+          code,
+          stdout: stdout.trim(),
+          stderr: stderr.trim()
+        });
         resolve({ code, stdout, stderr });
         return;
       }
@@ -678,12 +911,25 @@ function runSudoCommand(command, args, options = {}) {
       const error = new Error(stderr.trim() || `Command '${command}' failed.`);
       error.code = parseSudoErrorCode(stderr);
       error.exitCode = code;
+      logRecycleDebug("linux_command.failed", {
+        debugLabel,
+        command,
+        code,
+        errorCode: error.code,
+        stdout: stdout.trim(),
+        stderr: stderr.trim()
+      });
       reject(error);
     });
 
     child.stdin.write(`${password}\n`);
     child.stdin.end();
   });
+}
+
+function logRecycleDebug(step, details = {}) {
+  const timestamp = new Date().toISOString();
+  console.log(`[recycle-debug] ${timestamp} ${step}`, details);
 }
 
 function parseSudoErrorCode(stderr) {

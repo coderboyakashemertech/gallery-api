@@ -17,6 +17,7 @@ const openApiSpec = {
     { name: "Drives", description: "Drive discovery endpoints" },
     { name: "Auth", description: "Registration, login, and profile endpoints" },
     { name: "Two-Factor", description: "TOTP setup and verification endpoints" },
+    { name: "Favorites", description: "User favorite image endpoints" },
     { name: "Protected API", description: "Endpoints gated by AUTH_ENABLED" }
   ],
   components: {
@@ -78,6 +79,31 @@ const openApiSpec = {
           path: {
             type: "string",
             example: "/mnt/c/Users/akash/Downloads/New Folder"
+          }
+        }
+      },
+      FavoriteImageRequest: {
+        type: "object",
+        required: ["imageUrl"],
+        properties: {
+          imageUrl: {
+            type: "string",
+            example: "https://cdn.example.com/images/sunset.jpg"
+          }
+        }
+      },
+      FavoriteImage: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          imageUrl: {
+            type: "string",
+            example: "https://cdn.example.com/images/sunset.jpg"
+          },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+            example: "2026-03-19T10:15:30.000Z"
           }
         }
       },
@@ -826,6 +852,73 @@ const openApiSpec = {
         responses: {
           200: {
             description: "Protected user/auth payload"
+          }
+        }
+      }
+    },
+    "/api/favorites/images": {
+      get: {
+        tags: ["Favorites"],
+        summary: "List the authenticated user's favorite image links",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: "Favorite image links loaded successfully",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/FavoriteImage" }
+                }
+              }
+            }
+          },
+          401: {
+            description: "Missing or invalid JWT",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      },
+      post: {
+        tags: ["Favorites"],
+        summary: "Save an image link to the authenticated user's favorites",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/FavoriteImageRequest" }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: "Favorite image link saved successfully",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/FavoriteImage" }
+              }
+            }
+          },
+          400: {
+            description: "Missing imageUrl",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          401: {
+            description: "Missing or invalid JWT",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
           }
         }
       }
