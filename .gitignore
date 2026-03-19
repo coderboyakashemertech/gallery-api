@@ -4,3 +4,4 @@ npm-debug.log*
 prisma/*.db
 prisma/*.db-journal
 /dist
+dist/*
