@@ -1,7 +1,12 @@
 [
   {
-    "name": "Pictures",
-    "path": "/mnt/c/Users/akash/Pictures",
-    "size": "21474836480"
+    "name": "Seagate",
+    "path": "/mnt/seagate",
+    "size": "787052756992"
+  },
+  {
+    "name": "Samsung",
+    "path": "/mnt/samsung",
+    "size": "65498251264"
   }
 ]
