@@ -1,3 +1,5 @@
+const path = require("path");
+
 const { findUserByUsername } = require("../repositories/userRepository");
 const {
   createFavoriteImage,
@@ -24,8 +26,23 @@ async function resolveUser(username) {
   return user;
 }
 
+function extractImageFileName(imageUrl) {
+  const normalizedInput = String(imageUrl || "").trim();
+
+  if (!normalizedInput) {
+    return "";
+  }
+
+  const withoutQueryOrHash = normalizedInput.split(/[?#]/, 1)[0];
+  const fileName = path.win32.basename(
+    path.posix.basename(withoutQueryOrHash)
+  );
+
+  return fileName.trim();
+}
+
 async function saveFavoriteImage(username, imageUrl) {
-  const normalizedImageUrl = String(imageUrl || "").trim();
+  const normalizedImageUrl = extractImageFileName(imageUrl);
 
   if (!normalizedImageUrl) {
     const error = new Error("imageUrl is required.");
