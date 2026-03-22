@@ -251,7 +251,8 @@ function createApiRouter({ authEnabled }) {
     try {
       const favoriteImage = await saveFavoriteImage(
         req.auth.username,
-        req.body.imageUrl
+        req.body.imageUrl,
+        req.body.name
       );
 
       return sendSuccess(res, {

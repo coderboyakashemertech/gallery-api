@@ -1,6 +1,8 @@
 const prisma = require("../lib/prisma");
 
-async function createFavoriteImage({ userId, imageUrl }) {
+async function createFavoriteImage({ userId, imageUrl, name }) {
+  const update = name ? { name } : {};
+
   return prisma.favoriteImage.upsert({
     where: {
       userId_imageUrl: {
@@ -8,10 +10,11 @@ async function createFavoriteImage({ userId, imageUrl }) {
         imageUrl
       }
     },
-    update: {},
+    update,
     create: {
       userId,
-      imageUrl
+      imageUrl,
+      name: name || null
     }
   });
 }

@@ -23,6 +23,7 @@ model User {
 model FavoriteImage {
   id        Int      @id @default(autoincrement())
   imageUrl  String
+  name      String?
   userId    Int
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())

@@ -89,6 +89,10 @@ const openApiSpec = {
           imageUrl: {
             type: "string",
             example: "https://cdn.example.com/images/sunset.jpg"
+          },
+          name: {
+            type: "string",
+            example: "sunset.jpg"
           }
         }
       },
@@ -99,6 +103,11 @@ const openApiSpec = {
           imageUrl: {
             type: "string",
             example: "https://cdn.example.com/images/sunset.jpg"
+          },
+          name: {
+            type: "string",
+            nullable: true,
+            example: "sunset.jpg"
           },
           createdAt: {
             type: "string",

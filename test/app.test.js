@@ -156,12 +156,14 @@ function createDefaultState(files) {
       {
         id: 1,
         imageUrl: `https://cdn.example.com/${username}/favorite.jpg`,
+        name: "favorite.jpg",
         createdAt: "2026-03-20T10:00:00.000Z"
       }
     ],
-    saveFavoriteImage: async (username, imageUrl) => ({
+    saveFavoriteImage: async (username, imageUrl, name) => ({
       id: 2,
       imageUrl,
+      name: name || null,
       createdAt: `saved-for-${username}`
     })
   };
@@ -510,9 +512,10 @@ test("public, auth, protected, and docs endpoints respond as expected when auth 
     const { response, body } = await request(baseUrl, "/api/favorites/images", {
       method: "POST",
       headers: authHeaders,
-      body: JSON.stringify({ imageUrl: "https://cdn.example.com/images/sunset.jpg" })
+      body: JSON.stringify({ imageUrl: "https://cdn.example.com/images/sunset.jpg", name: "sunset.jpg" })
     });
     assert.equal(response.status, 201);
+    assert.equal(body.data.name, "sunset.jpg");
     assert.equal(body.data.createdAt, "saved-for-alice");
   }
 
@@ -522,6 +525,7 @@ test("public, auth, protected, and docs endpoints respond as expected when auth 
     });
     assert.equal(response.status, 200);
     assert.equal(body.data[0].imageUrl, "https://cdn.example.com/alice/favorite.jpg");
+    assert.equal(body.data[0].name, "favorite.jpg");
   }
 
   {

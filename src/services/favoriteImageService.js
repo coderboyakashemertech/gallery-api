@@ -8,6 +8,7 @@ function sanitizeFavoriteImage(favoriteImage) {
   return {
     id: favoriteImage.id,
     imageUrl: favoriteImage.imageUrl,
+    name: favoriteImage.name || null,
     createdAt: favoriteImage.createdAt
   };
 }
@@ -28,8 +29,14 @@ function normalizeFavoriteImageUrl(imageUrl) {
   return String(imageUrl || "").trim();
 }
 
-async function saveFavoriteImage(username, imageUrl) {
+function normalizeFavoriteImageName(name) {
+  const normalizedName = String(name || "").trim();
+  return normalizedName || null;
+}
+
+async function saveFavoriteImage(username, imageUrl, name) {
   const normalizedImageUrl = normalizeFavoriteImageUrl(imageUrl);
+  const normalizedName = normalizeFavoriteImageName(name);
 
   if (!normalizedImageUrl) {
     const error = new Error("imageUrl is required.");
@@ -40,7 +47,8 @@ async function saveFavoriteImage(username, imageUrl) {
   const user = await resolveUser(username);
   const favoriteImage = await createFavoriteImage({
     userId: user.id,
-    imageUrl: normalizedImageUrl
+    imageUrl: normalizedImageUrl,
+    name: normalizedName
   });
 
   return sanitizeFavoriteImage(favoriteImage);
