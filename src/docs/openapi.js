@@ -18,6 +18,7 @@ const openApiSpec = {
     { name: "Auth", description: "Registration, login, and profile endpoints" },
     { name: "Two-Factor", description: "TOTP setup and verification endpoints" },
     { name: "Favorites", description: "User favorite image endpoints" },
+    { name: "Albums", description: "User album endpoints" },
     { name: "Protected API", description: "Endpoints gated by AUTH_ENABLED" }
   ],
   components: {
@@ -100,6 +101,74 @@ const openApiSpec = {
         type: "object",
         properties: {
           id: { type: "integer", example: 1 },
+          imageUrl: {
+            type: "string",
+            example: "https://cdn.example.com/images/sunset.jpg"
+          },
+          name: {
+            type: "string",
+            nullable: true,
+            example: "sunset.jpg"
+          },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+            example: "2026-03-19T10:15:30.000Z"
+          }
+        }
+      },
+      AlbumRequest: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: {
+            type: "string",
+            example: "Trips"
+          }
+        }
+      },
+      AlbumImageRequest: {
+        type: "object",
+        required: ["imageUrl"],
+        properties: {
+          imageUrl: {
+            type: "string",
+            example: "https://cdn.example.com/images/sunset.jpg"
+          },
+          name: {
+            type: "string",
+            example: "sunset.jpg"
+          }
+        }
+      },
+      Album: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          name: { type: "string", example: "Trips" },
+          imageCount: { type: "integer", example: 12 },
+          coverImageUrl: {
+            type: "string",
+            nullable: true,
+            example: "https://cdn.example.com/images/sunset.jpg"
+          },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+            example: "2026-03-19T10:15:30.000Z"
+          },
+          updatedAt: {
+            type: "string",
+            format: "date-time",
+            example: "2026-03-20T10:15:30.000Z"
+          }
+        }
+      },
+      AlbumImage: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 7 },
+          albumId: { type: "integer", example: 1 },
           imageUrl: {
             type: "string",
             example: "https://cdn.example.com/images/sunset.jpg"
@@ -926,6 +995,108 @@ const openApiSpec = {
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/albums": {
+      get: {
+        tags: ["Albums"],
+        summary: "List the authenticated user's albums",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: "Albums loaded successfully",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Album" }
+                }
+              }
+            }
+          }
+        }
+      },
+      post: {
+        tags: ["Albums"],
+        summary: "Create an album for the authenticated user",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AlbumRequest" }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: "Album created successfully",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Album" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/albums/{albumId}/images": {
+      get: {
+        tags: ["Albums"],
+        summary: "List images saved to an album",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: "path",
+            name: "albumId",
+            required: true,
+            schema: { type: "integer" }
+          }
+        ],
+        responses: {
+          200: {
+            description: "Album images loaded successfully",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/AlbumImage" }
+                }
+              }
+            }
+          }
+        }
+      },
+      post: {
+        tags: ["Albums"],
+        summary: "Save an image to an album",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: "path",
+            name: "albumId",
+            required: true,
+            schema: { type: "integer" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AlbumImageRequest" }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: "Album image saved successfully",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/AlbumImage" }
               }
             }
           }

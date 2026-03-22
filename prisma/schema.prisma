@@ -16,6 +16,7 @@ model User {
   twoFactorSecret        String?
   twoFactorPendingSecret String?
   favorites              FavoriteImage[]
+  albums                 Album[]
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 }
@@ -29,4 +30,27 @@ model FavoriteImage {
   createdAt DateTime @default(now())
 
   @@unique([userId, imageUrl])
+}
+
+model Album {
+  id        Int         @id @default(autoincrement())
+  name      String
+  userId    Int
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  images    AlbumImage[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, name])
+}
+
+model AlbumImage {
+  id        Int      @id @default(autoincrement())
+  albumId   Int
+  album     Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  imageUrl  String
+  name      String?
+  createdAt DateTime @default(now())
+
+  @@unique([albumId, imageUrl])
 }

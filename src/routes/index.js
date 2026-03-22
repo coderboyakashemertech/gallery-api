@@ -1,6 +1,12 @@
 const express = require("express");
 const config = require("../config");
 const {
+  createUserAlbum,
+  getAlbumImages,
+  getAlbums,
+  saveAlbumImage,
+} = require('../services/albumService');
+const {
   getFavoriteImages,
   saveFavoriteImage
 } = require("../services/favoriteImageService");
@@ -195,6 +201,64 @@ function createApiRouter({ authEnabled }) {
       });
     } catch (error) {
       return sendError(res, error, "Failed to move item to recycle bin.");
+    }
+  });
+
+  router.get('/albums', async (req, res) => {
+    try {
+      const albums = await getAlbums(req.auth.username);
+      return sendSuccess(res, {
+        message: 'Albums loaded successfully.',
+        data: albums,
+      });
+    } catch (error) {
+      return sendError(res, error, 'Failed to load albums.');
+    }
+  });
+
+  router.post('/albums', async (req, res) => {
+    try {
+      const album = await createUserAlbum(req.auth.username, req.body.name);
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: 'Album created successfully.',
+        data: album,
+      });
+    } catch (error) {
+      return sendError(res, error, 'Failed to create album.');
+    }
+  });
+
+  router.get('/albums/:albumId/images', async (req, res) => {
+    try {
+      const albumImages = await getAlbumImages(
+        req.auth.username,
+        req.params.albumId
+      );
+      return sendSuccess(res, {
+        message: 'Album images loaded successfully.',
+        data: albumImages,
+      });
+    } catch (error) {
+      return sendError(res, error, 'Failed to load album images.');
+    }
+  });
+
+  router.post('/albums/:albumId/images', async (req, res) => {
+    try {
+      const albumImage = await saveAlbumImage(
+        req.auth.username,
+        req.params.albumId,
+        req.body.imageUrl,
+        req.body.name
+      );
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: 'Album image saved successfully.',
+        data: albumImage,
+      });
+    } catch (error) {
+      return sendError(res, error, 'Failed to save album image.');
     }
   });
 

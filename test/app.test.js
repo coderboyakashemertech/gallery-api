@@ -165,6 +165,40 @@ function createDefaultState(files) {
       imageUrl,
       name: name || null,
       createdAt: `saved-for-${username}`
+    }),
+    getAlbums: async (username) => [
+      {
+        id: 3,
+        name: `${username}-album`,
+        imageCount: 1,
+        coverImageUrl: `https://cdn.example.com/${username}/album-cover.jpg`,
+        createdAt: '2026-03-21T10:00:00.000Z',
+        updatedAt: '2026-03-21T12:00:00.000Z'
+      }
+    ],
+    createUserAlbum: async (username, name) => ({
+      id: 4,
+      name,
+      imageCount: 0,
+      coverImageUrl: null,
+      createdAt: `created-for-${username}`,
+      updatedAt: `updated-for-${username}`
+    }),
+    getAlbumImages: async (_username, albumId) => [
+      {
+        id: 5,
+        albumId: Number(albumId),
+        imageUrl: 'https://cdn.example.com/albums/sunset.jpg',
+        name: 'sunset.jpg',
+        createdAt: '2026-03-21T14:00:00.000Z'
+      }
+    ],
+    saveAlbumImage: async (_username, albumId, imageUrl, name) => ({
+      id: 6,
+      albumId: Number(albumId),
+      imageUrl,
+      name: name || null,
+      createdAt: '2026-03-21T15:00:00.000Z'
     })
   };
 }
@@ -211,6 +245,12 @@ function loadAppWithMocks({ authEnabled, recycleBinPath, files }) {
     mockModule("src/services/favoriteImageService.js", {
       getFavoriteImages: (...args) => state.getFavoriteImages(...args),
       saveFavoriteImage: (...args) => state.saveFavoriteImage(...args)
+    }),
+    mockModule("src/services/albumService.js", {
+      getAlbums: (...args) => state.getAlbums(...args),
+      createUserAlbum: (...args) => state.createUserAlbum(...args),
+      getAlbumImages: (...args) => state.getAlbumImages(...args),
+      saveAlbumImage: (...args) => state.saveAlbumImage(...args)
     })
   ];
 
@@ -526,6 +566,47 @@ test("public, auth, protected, and docs endpoints respond as expected when auth 
     assert.equal(response.status, 200);
     assert.equal(body.data[0].imageUrl, "https://cdn.example.com/alice/favorite.jpg");
     assert.equal(body.data[0].name, "favorite.jpg");
+  }
+
+  {
+    const { response, body } = await request(baseUrl, "/api/albums", {
+      headers: { authorization: "Bearer good-token" }
+    });
+    assert.equal(response.status, 200);
+    assert.equal(body.data[0].name, "alice-album");
+  }
+
+  {
+    const { response, body } = await request(baseUrl, "/api/albums", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ name: "Trips" })
+    });
+    assert.equal(response.status, 201);
+    assert.equal(body.data.name, "Trips");
+  }
+
+  {
+    const { response, body } = await request(baseUrl, "/api/albums/4/images", {
+      headers: { authorization: "Bearer good-token" }
+    });
+    assert.equal(response.status, 200);
+    assert.equal(body.data[0].albumId, 4);
+    assert.equal(body.data[0].name, "sunset.jpg");
+  }
+
+  {
+    const { response, body } = await request(baseUrl, "/api/albums/4/images", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        imageUrl: "https://cdn.example.com/images/sunset.jpg",
+        name: "sunset.jpg"
+      })
+    });
+    assert.equal(response.status, 201);
+    assert.equal(body.data.albumId, 4);
+    assert.equal(body.data.name, "sunset.jpg");
   }
 
   {
