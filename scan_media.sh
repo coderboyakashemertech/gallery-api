@@ -2,30 +2,40 @@
 set -euo pipefail
 
 usage() {
-    cat <<'EOF'
-Usage:
-  ./scan_media.sh [-v] <root_folder> [output.json]
+    cat <<EOF
+Usage: ./scan.sh [-v] <root_folder> [output.json]
 
 Options:
-  -v    Verbose mode
+  -v    Verbose mode (shows progress bar, percentage, folder, and file)
   -h    Help
-
-What it does:
-  - Scans media folders under root_folder
-  - Writes final JSON to output.json
 EOF
 }
 
 verbose=false
+while getopts ":vh" opt; do
+    case "$opt" in
+        v) verbose=true ;;
+        h) usage; exit 0 ;;
+        *) usage; exit 1 ;;
+    esac
+done
+shift $((OPTIND - 1))
 
-log() {
-    if [[ "$verbose" == true ]]; then
-        printf '[INFO] %s\n' "$*" >&2
-    fi
-}
+if [[ $# -lt 1 ]]; then
+    usage
+    exit 1
+fi
+
+ROOT="$1"
+OUTPUT="${2:-media_albums.json}"
+
+if [[ ! -d "$ROOT" ]]; then
+    echo "Error: Directory '$ROOT' does not exist." >&2
+    exit 1
+fi
 
 json_escape() {
-    local s=$1
+    local s="$1"
     s=${s//\\/\\\\}
     s=${s//\"/\\\"}
     s=${s//$'\n'/\\n}
@@ -36,210 +46,176 @@ json_escape() {
     printf '%s' "$s"
 }
 
-url_encode_path() {
-    local path_value=$1
-    local encoded=""
-    local i
-    local char
+draw_progress() {
+    local current="$1"
+    local total="$2"
+    local folder="$3"
+    local file="$4"
 
-    for ((i = 0; i < ${#path_value}; i++)); do
-        char=${path_value:i:1}
-        case "$char" in
-            [a-zA-Z0-9.~_-])
-                encoded+="$char"
-                ;;
-            *)
-                printf -v encoded '%s%%%02X' "$encoded" "'$char"
-                ;;
-        esac
-    done
+    local width=40
+    local percent=0
+    local filled=0
+    local empty=0
+    local bar
 
-    printf '%s' "$encoded"
-}
-
-format_duration() {
-    local total=$1
-    local h=$((total / 3600))
-    local m=$(((total % 3600) / 60))
-    local s=$((total % 60))
-
-    if (( h > 0 )); then
-        printf '%dh %dm %ds' "$h" "$m" "$s"
-    elif (( m > 0 )); then
-        printf '%dm %ds' "$m" "$s"
-    else
-        printf '%ds' "$s"
+    if (( total > 0 )); then
+        percent=$(( current * 100 / total ))
+        filled=$(( current * width / total ))
     fi
+    empty=$(( width - filled ))
+
+    bar=$(printf '%*s' "$filled" '' | tr ' ' '#')
+    bar+=$(printf '%*s' "$empty" '' | tr ' ' '-')
+
+    printf "\r\033[K[%s] %3d%% (%d/%d) Dir: %s | File: %s" \
+        "$bar" "$percent" "$current" "$total" "$folder" "$file" >&2
 }
 
-append_folder_output() {
-    if [[ "$first_output_folder" == true ]]; then
-        first_output_folder=false
-    else
-        printf ',\n' >> "$OUTPUT_TMP"
-    fi
+TMP_LIST=$(mktemp)
 
-    cat "$curr_folder_tmp" >> "$OUTPUT_TMP"
-    ((folder_count += 1))
+cleanup() {
+    rm -f "$TMP_LIST"
 }
+trap cleanup EXIT
 
-process_folder() {
-    local folder=$1
+find "$ROOT" \
+    \( -type d -name ".*" -prune \) -o \
+    \( -type f ! -name ".*" \( \
+        -iname "*.jpg"  -o -iname "*.jpeg" -o -iname "*.png"  -o \
+        -iname "*.gif"  -o -iname "*.bmp"  -o -iname "*.webp" \
+    \) -printf '%h\037%f\037%s\037%Ts\037%p\0' \) > "$TMP_LIST"
 
-    curr_folder="$folder"
-    curr_count=0
-    curr_size=0
-    curr_mtime=0
-    curr_files_tmp=$(mktemp)
-    curr_folder_tmp=$(mktemp)
-    curr_first_file=true
+total_files=$(tr -cd '\0' < "$TMP_LIST" | wc -c | awk '{print $1}')
 
-    while IFS=$'\x1f' read -r -d '' name size mtime fullpath; do
-        ((curr_count += 1))
-        ((curr_size += size))
-        if (( mtime > curr_mtime )); then
-            curr_mtime=$mtime
-        fi
+if [[ "$verbose" == false ]]; then
+    echo "Scanning: $ROOT" >&2
+    echo "Total matching files found: $total_files" >&2
+fi
 
-        if [[ "$curr_first_file" == true ]]; then
-            curr_first_file=false
-        else
-            printf ',\n' >> "$curr_files_tmp"
-        fi
+declare -A album_items
+declare -A album_name
+declare -A album_item_count
+declare -A album_images_count
+declare -A album_videos_count
+declare -A album_thumbnail
+declare -A album_last_updated
+declare -A album_seen
 
-        printf '        {"name": "%s", "path": "%s", "size": %d, "thumbnail": "", "date": %d, "mimetype": "%s"}' \
-            "$(json_escape "$name")" \
-            "$(json_escape "$(url_encode_path "$fullpath")")" \
-            "$size" \
-            "$mtime" \
-            "$(file --mime-type -b "$fullpath")" >> "$curr_files_tmp"
-    done < <(
-        find "$curr_folder" -maxdepth 1 -type f \( \
-            -iname "*.jpg"  -o -iname "*.jpeg" -o -iname "*.png"  -o \
-            -iname "*.gif"  -o -iname "*.bmp"  -o -iname "*.webp" -o \
-            -iname "*.tiff" -o -iname "*.mp4" \
-        \) -printf '%f\037%s\037%Ts\037%p\0' \
-        | sort -z -t $'\x1f' -k4,4
-    )
+count=0
 
-    if (( curr_count == 0 )); then
-        rm -f "$curr_files_tmp" "$curr_folder_tmp"
-        curr_files_tmp=""
-        curr_folder_tmp=""
-        curr_folder=""
-        return 0
+while IFS= read -r -d '' record; do
+    IFS=$'\x1f' read -r folder name size mtime fullpath <<< "$record"
+
+    count=$((count + 1))
+
+    if [[ "$verbose" == true ]]; then
+        draw_progress "$count" "$total_files" "$folder" "$name"
     fi
 
-    {
-        printf '    {\n'
-        printf '      "folder_name": "%s",\n' "$(json_escape "$(basename "$curr_folder")")"
-        printf '      "folder_path": "%s",\n' "$(json_escape "$(url_encode_path "$curr_folder")")"
-        printf '      "file_count": %d,\n' "$curr_count"
-        printf '      "folder_size_bytes": %d,\n' "$curr_size"
-        printf '      "latest_mtime": %d,\n' "$curr_mtime"
-        printf '      "files": [\n'
-        cat "$curr_files_tmp"
-        printf '\n'
-        printf '      ]\n'
-        printf '    }\n'
-    } > "$curr_folder_tmp"
+    ext="${name##*.}"
+    ext="${ext,,}"
 
-    rm -f "$curr_files_tmp"
-    curr_files_tmp=""
-    append_folder_output
-    rm -f "$curr_folder_tmp"
-    curr_folder_tmp=""
-    curr_folder=""
-
-    log "Scanned: $folder"
-}
-
-while getopts ":vh" opt; do
-    case "$opt" in
-        v) verbose=true ;;
-        h)
-            usage
-            exit 0
-            ;;
-        \?)
-            echo "Unknown option: -$OPTARG" >&2
-            usage >&2
-            exit 1
-            ;;
+    type="image"
+    case "$ext" in
+        mp4|mkv|mov) type="video" ;;
+        *) type="image" ;;
     esac
+
+    base_album_name="${folder##*/}"
+
+    if [[ -z "${album_seen["$folder"]+x}" ]]; then
+        album_seen["$folder"]=1
+        album_name["$folder"]="$base_album_name"
+        album_item_count["$folder"]=0
+        album_images_count["$folder"]=0
+        album_videos_count["$folder"]=0
+        album_thumbnail["$folder"]=""
+        album_last_updated["$folder"]="$mtime"
+        album_items["$folder"]=""
+    fi
+
+    album_item_count["$folder"]=$(( album_item_count["$folder"] + 1 ))
+
+    if [[ "$type" == "image" ]]; then
+        album_images_count["$folder"]=$(( album_images_count["$folder"] + 1 ))
+        if [[ -z "${album_thumbnail["$folder"]}" ]]; then
+            album_thumbnail["$folder"]="$fullpath"
+        fi
+    else
+        album_videos_count["$folder"]=$(( album_videos_count["$folder"] + 1 ))
+        if [[ -z "${album_thumbnail["$folder"]}" ]]; then
+            album_thumbnail["$folder"]="$fullpath"
+        fi
+    fi
+
+    if (( mtime > album_last_updated["$folder"] )); then
+        album_last_updated["$folder"]="$mtime"
+    fi
+
+    item_json=$(cat <<EOF
+        {
+          "name": "$(json_escape "$name")",
+          "path": "$(json_escape "$fullpath")",
+          "size_bytes": $size,
+          "mtime": $mtime,
+          "type": "$type"
+        }
+EOF
+)
+
+    if [[ -n "${album_items["$folder"]}" ]]; then
+        album_items["$folder"]+=","
+        album_items["$folder"]+=$'\n'
+    fi
+    album_items["$folder"]+="$item_json"
+
+done < "$TMP_LIST"
+
+if [[ "$verbose" == true ]]; then
+    printf "\r\033[K" >&2
+fi
+
+album_count=0
+for folder in "${!album_seen[@]}"; do
+    album_count=$((album_count + 1))
 done
 
-shift $((OPTIND - 1))
-
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-    usage >&2
-    exit 1
-fi
-
-ROOT=$1
-if [[ ! -d "$ROOT" ]]; then
-    echo "Directory does not exist: $ROOT" >&2
-    exit 1
-fi
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ $# -eq 2 ]]; then
-    if [[ "$2" = /* ]]; then
-        OUTPUT="$2"
-    else
-        OUTPUT="$(pwd)/$2"
-    fi
-else
-    OUTPUT="$SCRIPT_DIR/media_index.json"
-fi
-
-mkdir -p "$(dirname "$OUTPUT")"
-
-start_time=$(date +%s)
-
-log "Root folder: $ROOT"
-log "Output JSON: $OUTPUT"
-
-OUTPUT_TMP=$(mktemp)
-trap 'rm -f "$OUTPUT_TMP" "${curr_files_tmp:-}" "${curr_folder_tmp:-}"' EXIT
-
-generated_at=$(date +%s)
-folder_count=0
-first_output_folder=true
-
 {
-    printf '{\n'
-    printf '  "root": "%s",\n' "$(json_escape "$(realpath "$ROOT")")"
-    printf '  "generated_at": %d,\n' "$generated_at"
-    printf '  "folders": [\n'
-} > "$OUTPUT_TMP"
+    echo "{"
+    echo "  \"root\": \"$(json_escape "$(realpath "$ROOT")")\","
+    echo "  \"generated_at\": $(date +%s),"
+    echo "  \"total_albums\": $album_count,"
+    echo "  \"total_files\": $count,"
+    echo "  \"albums\": ["
 
-curr_folder=""
-curr_count=0
-curr_size=0
-curr_mtime=0
-curr_files_tmp=""
-curr_folder_tmp=""
-curr_first_file=true
+    first_album=true
+    for folder in "${!album_seen[@]}"; do
+        if [[ "$first_album" == true ]]; then
+            first_album=false
+        else
+            echo ","
+        fi
 
-log "Scanning media files..."
+        cat <<EOF
+    {
+      "album_name": "$(json_escape "${album_name["$folder"]}")",
+      "folder": "$(json_escape "$folder")",
+      "item_count": ${album_item_count["$folder"]},
+      "thumbnail": "$(json_escape "${album_thumbnail["$folder"]}")",
+      "images_count": ${album_images_count["$folder"]},
+      "videos_count": ${album_videos_count["$folder"]},
+      "last_updated": ${album_last_updated["$folder"]},
+      "items": [
+${album_items["$folder"]}
+      ]
+    }
+EOF
+    done
 
-while IFS= read -r -d '' folder; do
-    process_folder "$folder"
-done < <(find "$ROOT" -type d -print0 | sort -z)
+    echo
+    echo "  ]"
+    echo "}"
+} > "$OUTPUT"
 
-{
-    printf '\n'
-    printf '  ]\n'
-    printf '}\n'
-} >> "$OUTPUT_TMP"
-
-mv "$OUTPUT_TMP" "$OUTPUT"
-
-end_time=$(date +%s)
-duration=$((end_time - start_time))
-
-echo "Scan completed."
-echo "JSON saved to $OUTPUT"
-echo "Folders total: $folder_count"
-echo "Execution time: $(format_duration "$duration")"
+echo "Done! Indexed $count files into $album_count albums -> $OUTPUT" >&2
+echo "Output file: $(realpath "$OUTPUT")" >&2% 
